@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	// "strings"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket" // WebSocketクライアント/サーバーライブラリ
@@ -18,9 +18,10 @@ import (
 
 /*
 000000 2025-11-28 最初のバージョン
+000100 2025-11-28 ルームIDで取得対象を指定する、JSONデコードを複数の構造体に対応させるための準備、ログファイル書式変更
 */
 
-const Version = "000000"
+const Version = "000100"
 
 // MyMessage は受信するJSONデータの構造体を定義します。
 // 実際のJSONデータに合わせてフィールドを調整してください。
@@ -33,9 +34,6 @@ type MyMessage struct {
 	// Content string `json:"content"`
 }
 
-// const bcsvrkey = "33536369356e6866:22211944"
-const bcsvrkey = "4c6b446d4c534857:22215135" // みう
-
 func main() {
 
 	logfile, err := CreateLogfile(Version, time.Now().Format("150405"))
@@ -43,6 +41,23 @@ func main() {
 		panic("cannnot open logfile: " + err.Error())
 	}
 	defer logfile.Close()
+
+	// 起動時の最初のパラメータをルートIDとして取得
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: SRWebSocket <roomid>")
+	}
+	roomid, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("Invalid roomid: %s", os.Args[1])
+	}
+
+	// 0. bcsvrkeyの取得
+	bcsvrkey := ""
+	bcsvrkey, err = GetBcsvrkey(roomid)
+	if err != nil {
+		log.Fatalf("GetBcsvrkey error: %v", err)
+	}
+	log.Printf("roomid=%d bcsvrkey=%s", roomid, bcsvrkey)
 
 	// 1. WebSocket URLの準備
 	// JavaScriptの 'wss://xxx.com' に相当します。
@@ -86,7 +101,7 @@ func main() {
 
 			// テキストメッセージのみを処理 (通常WebSocketはテキストかバイナリ)
 			if messageType == websocket.TextMessage {
-				processReceivedMessage(message)
+				processReceivedMessage(bcsvrkey, message)
 			} else {
 				log.Printf("Received non-text message type: %d, data: %s", messageType, message)
 			}

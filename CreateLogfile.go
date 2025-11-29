@@ -66,7 +66,7 @@ func CreateLogfile(dsc ...string) (logfile *os.File, err error) {
 		log.SetOutput(logfile)
 	}
 
-	log.SetFlags(log.Lmicroseconds)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 	log.Printf("Version=%s Start\n", Version)
 
 	return

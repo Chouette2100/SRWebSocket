@@ -17,17 +17,17 @@ import (
 
 // ----------------
 
-type WsComment struct {
-	T         int    `json:"t"`
-	U         int    `json:"u"`
-	Ac        string `json:"ac"`
-	Av        int    `json:"av"`
-	Cm        string `json:"cm"`
-	D         int    `json:"d"`
-	At        int    `json:"at"`
-	Ua        int    `json:"ua"`
-	Aft       int    `json:"aft"`
-	CreatedAt int    `json:"created_at"`
+type WsComment struct { // 10
+	T         int    `json:"t"`          // "1" : コメント？
+	U         int    `json:"u"`          // ルームID
+	Ac        string `json:"ac"`         // ルーム名
+	Av        int    `json:"av"`         // アバターID
+	Cm        string `json:"cm"`         // コメント
+	D         int    `json:"d"`          // 不明
+	At        int    `json:"at"`         // 不明
+	Ua        int    `json:"ua"`         // 不明
+	Aft       int    `json:"aft"`        // 不明
+	CreatedAt int    `json:"created_at"` // タイムスタンプ
 }
 
 // ----------------
@@ -66,20 +66,21 @@ type WsVisitMsg struct {
 
 // ----------------
 
-type WsGift struct {
-	T         int    `json:"t"`
-	U         int    `json:"u"`
-	Ac        string `json:"ac"`
-	Av        int    `json:"av"`
-	G         int    `json:"g"`
-	Gt        int    `json:"gt"`
-	N         int    `json:"n"`
-	H         int    `json:"h"`
-	D         int    `json:"d"`
-	At        int    `json:"at"`
-	Ua        int    `json:"ua"`
-	Aft       int    `json:"aft"`
-	CreatedAt int    `json:"created_at"`
+type WsGift struct { // 14
+	T         int    `json:"t"`          // "2" : ギフト？
+	U         int    `json:"u"`          // ルームID
+	Ac        string `json:"ac"`         // ルーム名
+	Av        int    `json:"av"`         // アバターID
+	G         int    `json:"g"`          // ギフトID
+	Gt        int    `json:"gt"`         // ギフトタイプ？
+	Gn        string `json:"gn"`         // 不明
+	Gc        int    `json:"gc"`         // 不明
+	N         int    `json:"n"`          // 個数
+	H         int    `json:"h"`          // 不明
+	At        int    `json:"at"`         // 不明
+	Ua        int    `json:"ua"`         // ルーム種別
+	Aft       int    `json:"aft"`        // 不明
+	CreatedAt int    `json:"created_at"` // タイムスタンプ
 }
 
 // ----------------
@@ -102,7 +103,7 @@ type WsCPT struct {
 
 // processReceivedMessage は受信したメッセージを処理する関数です。
 // JavaScriptの onmessage イベント内のロジックに相当します。
-func processReceivedMessage(message []byte) {
+func processReceivedMessage(bcsvrkey string, message []byte) {
 	msgStr := string(message) // バイトスライスを文字列に変換
 
 	// JavaScriptの if (message.data === "ACK\tshowroom" || ...) に相当
@@ -116,19 +117,35 @@ func processReceivedMessage(message []byte) {
 			jsonStr := strings.TrimPrefix(msgStr, prefix)
 			log.Println("Received raw JSON string:", jsonStr)
 
-			var myMsg MyMessage // 定義した構造体のインスタンス
-			// JSON文字列をGoの構造体にデコード (アンマーシャル)
-			err := json.Unmarshal([]byte(jsonStr), &myMsg)
-			if err != nil {
-				log.Println("JSON unmarshal error:", err)
-				// JSONとしてパースできない場合は、元のメッセージをそのまま表示するなど
-				log.Println("Original message (not valid JSON after prefix removal):", msgStr)
-			} else {
-				// 成功した場合、構造体の内容を表示
-				log.Printf("Received JSON object: %+v", myMsg)
-				// ここで myMsg のデータを使って具体的なアプリケーションロジックを実装します。
-				// 例: データベースへの保存、他のサービスへの通知など
+			// 1. まず、JSONを map[string]json.RawMessage にデコードし、キーの数を取得します。
+			//    json.RawMessage を使うことで、値のデコードは後回しにし、キーの数だけを効率的に取得できます。
+			var rawMap map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(jsonStr), &rawMap); err != nil {
+				// return nil, fmt.Errorf("failed to unmarshal to raw map: %w", err)
+				log.Printf("failed to unmarshal to raw map: %s", err.Error())
+				return
 			}
+
+			memberCount := len(rawMap)
+			log.Printf("  Detected member count: %d\n", memberCount)
+
+			// var myMsg MyMessage // 定義した構造体のインスタンス
+			// JSON文字列をGoの構造体にデコード (アンマーシャル)
+			// var intf interface{}
+			// err := json.Unmarshal([]byte(jsonStr), &intf)
+			// if err != nil {
+			// 	log.Println("JSON unmarshal error:", err)
+			// 	// JSONとしてパースできない場合は、元のメッセージをそのまま表示するなど
+			// 	log.Println("Original message (not valid JSON after prefix removal):", msgStr)
+			// } else {
+			// // 成功した場合、構造体の内容を表示
+			// log.Printf("Received JSON object: %+v", myMsg)
+			// // ここで myMsg のデータを使って具体的なアプリケーションロジックを実装します。
+			// // 例: データベースへの保存、他のサービスへの通知など
+			// interface{} の型アサーションで具体的な型に変換して処理
+			// 	switch v := intf.(type) {
+			// 	case map[string]interface{}:
+			// }
 		} else {
 			// 予期しない形式のメッセージが来た場合
 			log.Println("Received message with unexpected format:", msgStr)
