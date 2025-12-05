@@ -14,14 +14,17 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket" // WebSocketクライアント/サーバーライブラリ
+
+	"github.com/Chouette2100/srcom"
 )
 
 /*
 000000 2025-11-28 最初のバージョン
 000100 2025-11-28 ルームIDで取得対象を指定する、JSONデコードを複数の構造体に対応させるための準備、ログファイル書式変更
+000101 2025-12-05 srcom.CreateLogfile3を使用する
 */
 
-const Version = "000100"
+const Version = "000101"
 
 // MyMessage は受信するJSONデータの構造体を定義します。
 // 実際のJSONデータに合わせてフィールドを調整してください。
@@ -36,7 +39,7 @@ type MyMessage struct {
 
 func main() {
 
-	logfile, err := CreateLogfile(Version, time.Now().Format("150405"))
+	logfile, err := srcom.CreateLogfile3(Version, time.Now().Format("150405"))
 	if err != nil {
 		panic("cannnot open logfile: " + err.Error())
 	}

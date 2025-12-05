@@ -21,7 +21,7 @@ import (
 
 func GetBcsvrkey(roomid int) (bcsvrkey string, err error) {
 
-	lol, err := srapi.ApiLiveOnlives2(http.DefaultClient)
+	lol, err := srapi.ApiLiveOnlives3(http.DefaultClient)
 
 	for _, onlive := range lol.Onlives {
 		for _, live := range onlive.Lives {
