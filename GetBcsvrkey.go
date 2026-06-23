@@ -19,6 +19,12 @@ import (
 	"github.com/Chouette2100/srapi/v2"
 )
 
+type GiftCatalogItem struct {
+	GiftName string
+	Point    int
+	Free     bool
+}
+
 func GetBcsvrkey(roomid int) (bcsvrkey string, err error) {
 
 	lol, err := srapi.ApiLiveOnlives3(http.DefaultClient)
@@ -35,4 +41,29 @@ func GetBcsvrkey(roomid int) (bcsvrkey string, err error) {
 		}
 	}
 	return
+}
+
+func GetGiftCatalog(roomid int) (map[int]GiftCatalogItem, error) {
+	lgl, err := srapi.ApiLiveGiftlist(http.DefaultClient, roomid)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[int]GiftCatalogItem)
+	for _, gift := range lgl.Normal {
+		result[gift.GiftID] = GiftCatalogItem{
+			GiftName: gift.GiftName,
+			Point:    gift.Point,
+			Free:     gift.Free,
+		}
+	}
+	for _, gift := range lgl.Enquete {
+		result[gift.GiftID] = GiftCatalogItem{
+			GiftName: gift.GiftName,
+			Point:    gift.Point,
+			Free:     gift.Free,
+		}
+	}
+
+	return result, nil
 }
