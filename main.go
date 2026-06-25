@@ -21,9 +21,10 @@ import (
 000100 2025-11-28 ルームIDで取得対象を指定する、JSONデコードを複数の構造体に対応させるための準備、ログファイル書式変更
 000101 2025-12-05 srcom.CreateLogfile3を使用する
 000200 2026-06-22 SSE/HTMX プロトタイプを追加
+000201 2026-06-25 累計値の算出・表示とそれに伴うレイアウトの変更を行う
 */
 
-const Version = "000200"
+const Version = "000201"
 
 func main() {
 	logfile, err := srcom.CreateLogfile3(Version, time.Now().Format("150405"))

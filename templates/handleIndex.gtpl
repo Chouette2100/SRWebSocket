@@ -102,16 +102,17 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>t</th>
-                            <th>u</th>
-                            <th>ac</th>
-                            <th>av</th>
-                            <th>g</th>
                             <th>gift_name</th>
                             <th>point</th>
-                            <th>free</th>
-                            <th>gt</th>
+                            <th></th>
                             <th>n</th>
+                            <th>Pt.</th>
+                            <th>Sum.</th>
+                            <th>ac</th>
+                            <th>u</th>
+                            <th>av</th>
+                            <th>g</th>
+                            <th>gt</th>
                             <th>h</th>
                             <th>d</th>
                             <th>at</th>
@@ -119,6 +120,7 @@
                             <th>aft</th>
                             <th>created_at</th>
                             <th>cl</th>
+                            <th>t</th>
                         </tr>
                     </thead>
                     <tbody id="gift-table-body"

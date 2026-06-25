@@ -10,8 +10,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
+
+var sumMap sync.Map // roomID -> int (累計ポイント)
 
 var indexTemplate = template.Must(template.ParseFiles(filepath.Join("templates", "handleIndex.gtpl")))
 var giftRowTemplate = template.Must(template.ParseFiles(filepath.Join("templates", "handleGiftEvents.gtpl")))
@@ -27,6 +30,8 @@ type giftRowData struct {
 	GiftName         string
 	GiftPoint        int
 	GiftFree         bool
+	Pt               int
+	Sum              int
 }
 
 func newHTTPHandler(manager *RoomManager) http.Handler {
@@ -85,7 +90,7 @@ func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 		w.Header().Set("X-Accel-Buffering", "no")
 
 		for _, gift := range subscription.history {
-			if err := writeSSEEvent(w, gift, giftCatalog); err != nil {
+			if err := writeSSEEvent(w, roomID, gift, giftCatalog); err != nil {
 				return
 			}
 		}
@@ -107,7 +112,7 @@ func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 				if !ok {
 					return
 				}
-				if err := writeSSEEvent(w, gift, giftCatalog); err != nil {
+				if err := writeSSEEvent(w, roomID, gift, giftCatalog); err != nil {
 					log.Printf("sse write error: %v", err)
 					return
 				}
@@ -130,8 +135,8 @@ func parseRoomID(r *http.Request) (int, error) {
 	return roomID, nil
 }
 
-func writeSSEEvent(w http.ResponseWriter, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) error {
-	row, err := renderGiftRow(gift, giftCatalog)
+func writeSSEEvent(w http.ResponseWriter, roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) error {
+	row, err := renderGiftRow(roomid, gift, giftCatalog)
 	if err != nil {
 		return err
 	}
@@ -148,16 +153,29 @@ func writeSSEEvent(w http.ResponseWriter, gift GiftMessage, giftCatalog map[int]
 	return err
 }
 
-func renderGiftRow(gift GiftMessage, giftCatalog map[int]GiftCatalogItem) (string, error) {
+func renderGiftRow(roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) (string, error) {
 	var buffer bytes.Buffer
 
 	meta := giftCatalog[gift.GiftCode]
+
+	pt := meta.Point * gift.Count
+	if gift.Count >= 10 {
+		pt = int(float64(pt) * 1.2)
+	}
+	if gift.H == 1 {
+		pt = int(float64(pt) * 2.5)
+	}
+	cpt, _ := sumMap.Load(roomid)
+	sumMap.Store(roomid, cpt.(int)+pt)
+
 	rowData := giftRowData{
 		GiftMessage:      gift,
 		CreatedAtDisplay: gift.CreatedAtTime().Format("2006-01-02 15:04:05"),
 		GiftName:         meta.GiftName,
 		GiftPoint:        meta.Point,
 		GiftFree:         meta.Free,
+		Pt:               pt,
+		Sum:              cpt.(int) + pt,
 	}
 
 	if err := giftRowTemplate.ExecuteTemplate(&buffer, "handleGiftEvents.gtpl", rowData); err != nil {

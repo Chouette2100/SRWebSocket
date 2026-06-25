@@ -166,6 +166,12 @@ func (m *RoomManager) startWorkerLocked(roomID int) (*roomWorker, error) {
 		cancel:              cancel,
 	}
 
+	if _, loaded := sumMap.LoadOrStore(roomID, 0); !loaded {
+		log.Printf("initialized sumMap for roomid=%d", roomID)
+	} else {
+		sumMap.Store(roomID, 0)
+	}
+
 	go runGiftHub(workerCtx, worker.bcsvrkey, worker.rawMessages, worker.subscribeRequests, worker.unsubscribeRequests)
 	go runWorkerCollector(workerCtx, worker.roomID, worker.bcsvrkey, worker.rawMessages)
 
