@@ -1,0 +1,22 @@
+# export SOPS_AGE_RECIPIENTS=age1.....
+# sops --encrypt --encrypted-regex 'DBACCT|DBPSWD|DBNAME' DBconfig.yaml>DBconfig.enc.yaml
+DBHOST: 127.0.0.1
+DBPORT: 9910
+DBNAME: ENC[AES256_GCM,data:0w1pgL8ZlI4=,iv:+r0Z1Kj0Rv/RJmi4RmB2cPMnFkBqlddvP5H9za2qFQk=,tag:dujJ8G5OMabAXgDFEgcOCA==,type:str]
+DBACCT: ENC[AES256_GCM,data:woXzMoYB5g==,iv:cTII8XE7rUZLnoa0cgtbT6IxxcY2AAiTUN9RlXu5F1E=,tag:NIdw6XyngyomeIG5bFOyog==,type:str]
+DBPSWD: ENC[AES256_GCM,data:4Fx/djJulcNJG4o=,iv:cC9tVi8SL9pKxmQ9NhBsMDkP8Jy1LJgoYwEsfI/mnr4=,tag:gXQtHjJblfIdGl9rBlBiXg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBYZGFnbjB2bUUyd1ZOMndL
+            TTNhLzNWN0dQek1TczdTNE5LY2NwNUZDL2w4CkdnUUpSL2RPS1A3dGhaQ0hMd1lm
+            R1FVWEFjOVlMSFAxTnZkdlVMQjZLY2cKLS0tIDJQRXdFV0E1c3ZnVkgrNWloc0pY
+            Q2dlS1dqUHY3dW83NmxSY3ZqR09SSlkKhU7SVsWCiZbrhOciwO/rEHmW7OsPUMFi
+            7cvqsC6hGaiNun1nNpDstEpP/Jf3m+CFf9RJ7UpzWU1grZRxv7X99w==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age13mlf945e3emk75ys348xttw048ufq7vpgw7l94g63tl5pt03mdrsfqra2l
+    encrypted_regex: DBACCT|DBPSWD|DBNAME
+    lastmodified: "2026-06-20T08:47:47Z"
+    mac: ENC[AES256_GCM,data:SkpGOJ0FWlpoWufCSpab3nF4FmNxrhBJLl4cQaqxAd57WPWfnGl5NgjnpubkCtVTV/nueEzfCEKVEU4pDOa7MH8qLFPPSq637ud4fFg1tOoD9z7BT9GMZHL3QlxKD4oj/vHki6StMEvB0FdIsAICPfXLBLLR/NeNQXJ+x9A/XKw=,iv:6xTEL5RgeFWxDgfTn/HvSmkZ0LFjR0bokZQGqqp1Eso=,tag:TiRO6fui5lSX71dOxqPJYA==,type:str]
+    version: 3.13.1

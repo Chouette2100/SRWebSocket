@@ -22,9 +22,10 @@ import (
 000101 2025-12-05 srcom.CreateLogfile3を使用する
 000200 2026-06-22 SSE/HTMX プロトタイプを追加
 000201 2026-06-25 累計値の算出・表示とそれに伴うレイアウトの変更を行う
+000300 2026-06-27 常時起動を前提とした機能の再構成を行う
 */
 
-const Version = "000201"
+const Version = "000300"
 
 func main() {
 	logfile, err := srcom.CreateLogfile3(Version, time.Now().Format("150405"))

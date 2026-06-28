@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -14,7 +15,16 @@ func streamWebSocket(ctx context.Context, bcsvrkey string, outbound chan<- []byt
 	u := url.URL{Scheme: "wss", Host: "online.showroom-live.com", Path: "/"}
 	log.Printf("connecting websocket: %s", u.String())
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u.String(), nil)
+	headers := http.Header{}
+	headers.Set("Origin", "https://www.showroom-live.com")
+	headers.Set("Cache-Control", "no-cache")
+	headers.Set("Pragma", "no-cache")
+	headers.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36")
+	headers.Set("Accept-Language", "ja,en-US;q=0.9,en;q=0.8")
+
+	dialer := *websocket.DefaultDialer
+	dialer.EnableCompression = true
+	conn, _, err := dialer.DialContext(ctx, u.String(), headers)
 	if err != nil {
 		return fmt.Errorf("dial websocket: %w", err)
 	}

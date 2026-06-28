@@ -16,6 +16,7 @@ type subscribeResponse struct {
 
 type roomWorker struct {
 	roomID              int
+	roomURL             string
 	bcsvrkey            string
 	catalog             map[int]GiftCatalogItem
 	rawMessages         chan []byte
@@ -155,9 +156,15 @@ func (m *RoomManager) startWorkerLocked(roomID int) (*roomWorker, error) {
 		return nil, fmt.Errorf("get gift catalog roomid=%d: %w", roomID, err)
 	}
 
+	roomURL, err := roomURLFromRoomID(roomID)
+	if err != nil {
+		return nil, fmt.Errorf("get room url roomid=%d: %w", roomID, err)
+	}
+
 	workerCtx, cancel := context.WithCancel(m.ctx)
 	worker := &roomWorker{
 		roomID:              roomID,
+		roomURL:             roomURL,
 		bcsvrkey:            bcsvrkey,
 		catalog:             catalog,
 		rawMessages:         make(chan []byte, 4096),
@@ -173,37 +180,58 @@ func (m *RoomManager) startWorkerLocked(roomID int) (*roomWorker, error) {
 	}
 
 	go runGiftHub(workerCtx, worker.bcsvrkey, worker.rawMessages, worker.subscribeRequests, worker.unsubscribeRequests)
-	go runWorkerCollector(workerCtx, worker.roomID, worker.bcsvrkey, worker.rawMessages)
+	go runWorkerCollector(workerCtx, worker.roomID, worker.roomURL, worker.rawMessages)
 
 	log.Printf("started room worker: roomid=%d bcsvrkey=%s gifts=%d", roomID, bcsvrkey, len(catalog))
 	return worker, nil
 }
 
-func runWorkerCollector(ctx context.Context, roomID int, bcsvrkey string, outbound chan<- []byte) {
-	backoff := 2 * time.Second
-
+func runWorkerCollector(ctx context.Context, roomID int, roomURL string, outbound chan<- []byte) {
 	for {
-		err := streamWebSocket(ctx, bcsvrkey, outbound)
-		if err == nil || ctx.Err() != nil {
-			return
+		bcsvrkey, err := GetBcsvrkey(roomID)
+		if err == nil {
+			if err := streamWebSocket(ctx, bcsvrkey, outbound); err != nil && ctx.Err() == nil {
+				log.Printf("streamWebSocket ended: roomid=%d err=%v", roomID, err)
+			}
+			continue
 		}
 
-		log.Printf("room worker reconnect: roomid=%d err=%v", roomID, err)
-		timer := time.NewTimer(backoff)
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+		log.Printf("GetBcsvrkey failed: roomid=%d err=%v", roomID, err)
+		createdAt, waitErr := WaitForWebSocketCreated(roomURL)
+		if waitErr != nil {
+			if ctx.Err() != nil {
+				return
 			}
-			return
+			log.Printf("WaitForWebSocketCreated failed: roomid=%d err=%v", roomID, waitErr)
+			continue
 		}
 
-		if backoff < 30*time.Second {
-			backoff *= 2
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
-			}
+		if ct, status := parseWebSocketCreated(createdAt); status {
+			sumMap.Store(roomID, 0)
+			log.Printf("websocket created detected: roomid=%d created_at=%s", roomID, ct.Format(time.RFC3339))
 		}
 	}
+}
+
+func roomURLFromRoomID(roomID int) (string, error) {
+	usr, err := getUserInfo(roomID)
+	if err != nil {
+		return "", err
+	}
+	return "https://www.showroom-live.com/r/" + usr.Userid, nil
+}
+
+func parseWebSocketCreated(createdAt time.Time) (time.Time, bool) {
+	if createdAt.IsZero() {
+		return time.Time{}, false
+	}
+
+	delta := time.Since(createdAt)
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta > 2*time.Minute {
+		return time.Time{}, false
+	}
+	return createdAt, true
 }
