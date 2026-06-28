@@ -190,7 +190,11 @@ func runWorkerCollector(ctx context.Context, roomID int, roomURL string, outboun
 	for {
 		bcsvrkey, err := GetBcsvrkey(roomID)
 		if err == nil {
+			// bcsvrkeyが取得できた = 配信がハイ待った = ギフトの受信を開始する
 			if err := streamWebSocket(ctx, bcsvrkey, outbound); err != nil && ctx.Err() == nil {
+				// エラーが発生した場合は、再度bcsvrkeyを取得して再接続する
+				// 配信が終わった場合もここにくるが、その場合は再度bcsvrkeyを取得できないので、
+				// 次のループで待機することになる
 				log.Printf("streamWebSocket ended: roomid=%d err=%v", roomID, err)
 			}
 			continue
