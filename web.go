@@ -17,11 +17,23 @@ import (
 var sumMap sync.Map // roomID -> int (累計ポイント)
 
 var indexTemplate = template.Must(template.ParseFiles(filepath.Join("templates", "handleIndex.gtpl")))
+var adminTemplate = template.Must(template.ParseFiles(filepath.Join("templates", "handleAdmin.gtpl")))
 var giftRowTemplate = template.Must(template.ParseFiles(filepath.Join("templates", "handleGiftEvents.gtpl")))
 
 type indexTemplateData struct {
 	MaxRows int
 	RoomID  int
+}
+
+type adminRoomRow struct {
+	RoomConfig
+	Status      string
+	Subscribers int
+	Running     bool
+}
+
+type adminTemplateData struct {
+	Rooms []adminRoomRow
 }
 
 type giftRowData struct {
@@ -37,6 +49,8 @@ type giftRowData struct {
 func newHTTPHandler(manager *RoomManager) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
+	mux.HandleFunc("/admin", handleAdmin(manager))
+	mux.HandleFunc("/admin/rooms", handleAdminRooms(manager))
 	mux.HandleFunc("/events/gifts", handleGiftEvents(manager))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -58,6 +72,95 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleAdmin(manager *RoomManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		configs, err := LoadRoomConfigs()
+		if err != nil {
+			http.Error(w, fmt.Sprintf("load room configs failed: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		runtime := map[int]RoomRuntimeSnapshot{}
+		for _, item := range manager.Snapshot() {
+			runtime[item.RoomID] = item
+		}
+
+		rows := make([]adminRoomRow, 0, len(configs))
+		for _, config := range configs {
+			item := adminRoomRow{RoomConfig: config}
+			if current, ok := runtime[config.RoomID]; ok {
+				item.Subscribers = current.Subscribers
+				item.Status = current.Phase
+				item.Mode = current.Mode
+				item.Running = current.Phase != "停止中"
+			} else {
+				item.Status = "停止中"
+			}
+			rows = append(rows, item)
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := adminTemplate.ExecuteTemplate(w, "handleAdmin.gtpl", adminTemplateData{Rooms: rows}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+}
+
+func handleAdminRooms(manager *RoomManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, fmt.Sprintf("parse form failed: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		roomID, err := strconv.Atoi(strings.TrimSpace(r.FormValue("roomid")))
+		if err != nil || roomID <= 0 {
+			http.Error(w, "invalid roomid", http.StatusBadRequest)
+			return
+		}
+
+		action := r.FormValue("action")
+		saveData := r.FormValue("save_data") == "on"
+		mode := RoomRunMode(r.FormValue("mode"))
+		if !mode.Valid() {
+			mode = RoomRunModeOnce
+		}
+
+		var opErr error
+		switch action {
+		case "start":
+			opErr = manager.StartRoomWithConfig(roomID, mode, saveData)
+		case "stop":
+			manager.StopRoom(roomID)
+		case "start-always":
+			opErr = manager.StartRoomWithConfig(roomID, RoomRunModeAlways, saveData)
+		case "stop-once":
+			opErr = manager.UpdateRoomMode(roomID, RoomRunModeOnce)
+			manager.StopRoom(roomID)
+		case "stop-always":
+			opErr = manager.UpdateRoomMode(roomID, RoomRunModeOnce)
+			manager.StopRoom(roomID)
+		case "mode-once":
+			opErr = manager.UpdateRoomMode(roomID, RoomRunModeOnce)
+		case "delete":
+			opErr = manager.DeleteRoom(roomID)
+		default:
+			opErr = manager.StartRoomWithConfig(roomID, mode, saveData)
+		}
+		if opErr != nil {
+			http.Error(w, fmt.Sprintf("room operation failed: %v", opErr), http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	}
+}
+
 func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		roomID, err := parseRoomID(r)
@@ -72,7 +175,7 @@ func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 			return
 		}
 
-		subscription, giftCatalog, err := manager.Subscribe(roomID)
+		subscription, _, err := manager.Subscribe(roomID)
 		if err != nil {
 			if errors.Is(err, r.Context().Err()) {
 				return
@@ -90,7 +193,7 @@ func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 		w.Header().Set("X-Accel-Buffering", "no")
 
 		for _, gift := range subscription.history {
-			if err := writeSSEEvent(w, roomID, gift, giftCatalog); err != nil {
+			if err := writeSSEEvent(w, gift); err != nil {
 				return
 			}
 		}
@@ -112,7 +215,7 @@ func handleGiftEvents(manager *RoomManager) http.HandlerFunc {
 				if !ok {
 					return
 				}
-				if err := writeSSEEvent(w, roomID, gift, giftCatalog); err != nil {
+				if err := writeSSEEvent(w, gift); err != nil {
 					log.Printf("sse write error: %v", err)
 					return
 				}
@@ -135,8 +238,8 @@ func parseRoomID(r *http.Request) (int, error) {
 	return roomID, nil
 }
 
-func writeSSEEvent(w http.ResponseWriter, roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) error {
-	row, err := renderGiftRow(roomid, gift, giftCatalog)
+func writeSSEEvent(w http.ResponseWriter, row giftRowData) error {
+	rowText, err := renderGiftRow(row)
 	if err != nil {
 		return err
 	}
@@ -144,7 +247,7 @@ func writeSSEEvent(w http.ResponseWriter, roomid int, gift GiftMessage, giftCata
 	if _, err := fmt.Fprint(w, "event: gift_update\n"); err != nil {
 		return err
 	}
-	for _, line := range strings.Split(row, "\n") {
+	for _, line := range strings.Split(rowText, "\n") {
 		if _, err := fmt.Fprintf(w, "data: %s\n", line); err != nil {
 			return err
 		}
@@ -153,9 +256,7 @@ func writeSSEEvent(w http.ResponseWriter, roomid int, gift GiftMessage, giftCata
 	return err
 }
 
-func renderGiftRow(roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) (string, error) {
-	var buffer bytes.Buffer
-
+func buildGiftRowData(roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalogItem) giftRowData {
 	meta := giftCatalog[gift.GiftCode]
 
 	pt := meta.Point * gift.Count
@@ -165,20 +266,28 @@ func renderGiftRow(roomid int, gift GiftMessage, giftCatalog map[int]GiftCatalog
 	if gift.H == 1 {
 		pt = int(float64(pt) * 2.5)
 	}
-	cpt, _ := sumMap.Load(roomid)
-	sumMap.Store(roomid, cpt.(int)+pt)
 
-	rowData := giftRowData{
+	currentSum := 0
+	if cpt, ok := sumMap.Load(roomid); ok {
+		currentSum, _ = cpt.(int)
+	}
+	newSum := currentSum + pt
+	sumMap.Store(roomid, newSum)
+
+	return giftRowData{
 		GiftMessage:      gift,
 		CreatedAtDisplay: gift.CreatedAtTime().Format("2006-01-02 15:04:05"),
 		GiftName:         meta.GiftName,
 		GiftPoint:        meta.Point,
 		GiftFree:         meta.Free,
 		Pt:               pt,
-		Sum:              cpt.(int) + pt,
+		Sum:              newSum,
 	}
+}
 
-	if err := giftRowTemplate.ExecuteTemplate(&buffer, "handleGiftEvents.gtpl", rowData); err != nil {
+func renderGiftRow(row giftRowData) (string, error) {
+	var buffer bytes.Buffer
+	if err := giftRowTemplate.ExecuteTemplate(&buffer, "handleGiftEvents.gtpl", row); err != nil {
 		return "", err
 	}
 	return buffer.String(), nil

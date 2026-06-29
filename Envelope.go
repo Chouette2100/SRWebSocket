@@ -37,8 +37,8 @@ func (g GiftMessage) CreatedAtTime() time.Time {
 
 type subscription struct {
 	id      int
-	stream  <-chan GiftMessage
-	history []GiftMessage
+	stream  <-chan giftRowData
+	history []giftRowData
 }
 
 type subscriptionRequest struct {

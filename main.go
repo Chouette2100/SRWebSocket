@@ -24,9 +24,10 @@ import (
 000201 2026-06-25 累計値の算出・表示とそれに伴うレイアウトの変更を行う
 000300 2026-06-27 常時起動を前提とした機能の再構成を行う
 000400 2026-06-28 タイムアウト対策を行う
+000500 2026-06-28 管理画面の導入と設定・取得データのDBへの保存
 */
 
-const Version = "000400"
+const Version = "000500"
 
 func main() {
 	logfile, err := srcom.CreateLogfile3(Version, time.Now().Format("150405"))
@@ -43,6 +44,13 @@ func main() {
 	defer stop()
 
 	roomManager := NewRoomManager(ctx, *idleTimeout)
+	configs, err := LoadRoomConfigs()
+	if err != nil {
+		log.Printf("room config bootstrap skipped: %v", err)
+	} else {
+		roomManager.BootstrapFromConfigs(configs)
+		log.Printf("bootstrapped room configs: %d", len(configs))
+	}
 
 	server := &http.Server{
 		Addr:              *listenAddr,

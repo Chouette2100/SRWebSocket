@@ -33,5 +33,11 @@ func init() {
 	}
 	dbmap = &gorp.DbMap{Db: db, Dialect: gorp.MySQLDialect{Engine: "InnoDB", Encoding: "utf8mb4"}}
 	dbmap.AddTableWithName(srdblib.User{}, "user").SetKeys(false, "Userno")
+	if err := ensureRoomConfigTable(); err != nil {
+		log.Fatalf("room config table initialization failed: %v", err)
+	}
+	if err := ensureRoomEventLogTable(); err != nil {
+		log.Fatalf("room event log table initialization failed: %v", err)
+	}
 
 }

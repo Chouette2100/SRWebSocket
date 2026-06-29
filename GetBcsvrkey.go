@@ -26,21 +26,40 @@ type GiftCatalogItem struct {
 }
 
 func GetBcsvrkey(roomid int) (bcsvrkey string, err error) {
-
-	lol, err := srapi.ApiLiveOnlives3(http.DefaultClient)
-
-	for _, onlive := range lol.Onlives {
-		for _, live := range onlive.Lives {
-			if live.RoomID == roomid {
-				bcsvrkey = live.BcsvrKey
-				return
+	lol, liveErr := srapi.ApiLiveOnlives3(http.DefaultClient)
+	if liveErr == nil {
+		if lol == nil {
+			liveErr = fmt.Errorf("api returned nil live list")
+		} else {
+			for _, onlive := range lol.Onlives {
+				for _, live := range onlive.Lives {
+					if live.RoomID == roomid {
+						bcsvrkey = live.BcsvrKey
+						return
+					}
+				}
 			}
-		}
-		if bcsvrkey == "" {
-			err = fmt.Errorf("bcsvrkey not found for roomid=%d", roomid)
+			liveErr = fmt.Errorf("bcsvrkey not found in onlives for roomid=%d", roomid)
 		}
 	}
-	return
+
+	usr, err := getUserInfo(roomid)
+	if err != nil {
+		return "", fmt.Errorf("get user info roomid=%d: %w", roomid, err)
+	}
+
+	status, err := srapi.ApiRoomStatus(http.DefaultClient, usr.Userid)
+	if err != nil {
+		return "", fmt.Errorf("room status roomid=%d userid=%s: %w (onlives err: %v)", roomid, usr.Userid, err, liveErr)
+	}
+	if status == nil {
+		return "", fmt.Errorf("room status returned nil for roomid=%d (onlives err: %v)", roomid, liveErr)
+	}
+	if status.Broadcast_key != "" {
+		return status.Broadcast_key, nil
+	}
+
+	return "", fmt.Errorf("bcsvrkey not found for roomid=%d userid=%s (onlives err: %v)", roomid, usr.Userid, liveErr)
 }
 
 func GetGiftCatalog(roomid int) (map[int]GiftCatalogItem, error) {

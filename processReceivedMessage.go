@@ -9,13 +9,15 @@ import (
 
 func runGiftHub(
 	ctx context.Context,
-	bcsvrkey string,
+	roomID int,
+	giftCatalog map[int]GiftCatalogItem,
+	persistGift func(int, giftRowData),
 	inbound <-chan []byte,
 	subscribeRequests <-chan subscriptionRequest,
 	unsubscribeRequests <-chan int,
 ) {
-	subscribers := map[int]chan GiftMessage{}
-	history := make([]GiftMessage, 0, maxTableRows)
+	subscribers := map[int]chan giftRowData{}
+	history := make([]giftRowData, 0, maxTableRows)
 	nextSubscriberID := 1
 
 	for {
@@ -28,8 +30,8 @@ func runGiftHub(
 			return
 
 		case request := <-subscribeRequests:
-			stream := make(chan GiftMessage, clientBufferSize)
-			historyCopy := append([]GiftMessage(nil), history...)
+			stream := make(chan giftRowData, clientBufferSize)
+			historyCopy := append([]giftRowData(nil), history...)
 			request.response <- subscription{
 				id:      nextSubscriberID,
 				stream:  stream,
@@ -47,7 +49,7 @@ func runGiftHub(
 			delete(subscribers, subscriberID)
 
 		case rawMessage := <-inbound:
-			gift, ok, err := processReceivedMessage(bcsvrkey, rawMessage)
+			gift, ok, err := processReceivedMessage(rawMessage)
 			if err != nil {
 				log.Printf("drop websocket message: %v", err)
 				continue
@@ -57,13 +59,17 @@ func runGiftHub(
 			}
 
 			gift = transformGiftMessage(gift)
-			history = append(history, gift)
+			row := buildGiftRowData(roomID, gift, giftCatalog)
+			if persistGift != nil {
+				persistGift(roomID, row)
+			}
+			history = append(history, row)
 			if len(history) > maxTableRows {
 				history = history[len(history)-maxTableRows:]
 			}
 
 			for subscriberID, stream := range subscribers {
-				if enqueueLatest(stream, gift) {
+				if enqueueLatest(stream, row) {
 					continue
 				}
 				close(stream)
@@ -74,8 +80,8 @@ func runGiftHub(
 	}
 }
 
-func processReceivedMessage(bcsvrkey string, message []byte) (GiftMessage, bool, error) {
-	payload, ok := extractJSONPayload(bcsvrkey, message)
+func processReceivedMessage(message []byte) (GiftMessage, bool, error) {
+	payload, ok := extractJSONPayload(message)
 	if !ok {
 		return GiftMessage{}, false, nil
 	}
@@ -96,7 +102,7 @@ func processReceivedMessage(bcsvrkey string, message []byte) (GiftMessage, bool,
 	return gift, true, nil
 }
 
-func extractJSONPayload(bcsvrkey string, message []byte) ([]byte, bool) {
+func extractJSONPayload(message []byte) ([]byte, bool) {
 	messageText := string(message)
 
 	switch messageText {
@@ -104,13 +110,15 @@ func extractJSONPayload(bcsvrkey string, message []byte) ([]byte, bool) {
 		return nil, false
 	}
 
-	prefix := "MSG\t" + bcsvrkey
-	if !strings.HasPrefix(messageText, prefix) {
+	if !strings.HasPrefix(messageText, "MSG\t") {
 		return nil, false
 	}
 
-	payload := strings.TrimPrefix(messageText, prefix)
-	payload = strings.TrimLeft(payload, "\t")
+	parts := strings.SplitN(messageText, "\t", 3)
+	if len(parts) != 3 {
+		return nil, false
+	}
+	payload := parts[2]
 	return []byte(payload), true
 }
 
@@ -118,7 +126,7 @@ func transformGiftMessage(gift GiftMessage) GiftMessage {
 	return gift
 }
 
-func enqueueLatest(stream chan GiftMessage, gift GiftMessage) bool {
+func enqueueLatest(stream chan giftRowData, gift giftRowData) bool {
 	select {
 	case stream <- gift:
 		return true

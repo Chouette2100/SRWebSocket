@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -11,6 +12,10 @@ import (
 )
 
 func streamWebSocket(ctx context.Context, bcsvrkey string, outbound chan<- []byte) error {
+	if bcsvrkey == "" {
+		return fmt.Errorf("empty bcsvrkey")
+	}
+
 	u := url.URL{Scheme: "wss", Host: "online.showroom-live.com", Path: "/"}
 	backoff := 2 * time.Second
 
@@ -50,7 +55,7 @@ func streamWebSocket(ctx context.Context, bcsvrkey string, outbound chan<- []byt
 			continue
 		}
 
-		func() {
+		err = func() error {
 			defer conn.Close()
 
 			go func() {
@@ -62,14 +67,18 @@ func streamWebSocket(ctx context.Context, bcsvrkey string, outbound chan<- []byt
 				)
 				_ = conn.Close()
 			}()
+
+			if err := conn.WriteMessage(websocket.TextMessage, []byte("SUB\t"+bcsvrkey)); err != nil {
+				return fmt.Errorf("send subscription: %w", err)
+			}
+
 			for {
 				messageType, message, err := conn.ReadMessage()
 				if err != nil {
 					if ctx.Err() != nil {
-						return
+						return ctx.Err()
 					}
-					log.Printf("read websocket message failed: %v", err)
-					return
+					return fmt.Errorf("read websocket message: %w", err)
 				}
 
 				if messageType != websocket.TextMessage {
@@ -80,10 +89,17 @@ func streamWebSocket(ctx context.Context, bcsvrkey string, outbound chan<- []byt
 				select {
 				case outbound <- copied:
 				case <-ctx.Done():
-					return
+					return ctx.Err()
 				}
 			}
 		}()
+
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			log.Printf("websocket session ended: %v", err)
+		}
 
 		backoff = 2 * time.Second
 		select {
